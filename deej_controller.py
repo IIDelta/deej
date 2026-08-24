@@ -93,17 +93,21 @@ def set_application_volume(app_names, volume_percent):
 
 
 def main():
-    print(f"Connecting to Arduino on {SERIAL_PORT}...")
-    try:
-        ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=0.1)
-    except Exception as e:
-        print(f"Failed to open serial port: {e}")
-        return
-
-    print("Deej full-control daemon running successfully!")
+    print(f"Starting Deej daemon for {SERIAL_PORT}...")
     last_volumes = {}
+    ser = None
 
     while True:
+        # 1. Reconnection Logic
+        if ser is None:
+            try:
+                ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=0.1)
+                print("Successfully connected to Arduino!")
+            except Exception:
+                time.sleep(2)  # Wait 2 seconds before retrying to prevent CPU thrashing
+                continue
+
+        # 2. Read and Process Data
         try:
             line = ser.readline().decode("utf-8", errors="ignore").strip()
             if not line:
@@ -117,7 +121,7 @@ def main():
             if len(slider_values) < 5:
                 continue
 
-            # 1. Unmapped (Misc) Apps Slider
+            # Unmapped (Misc) Apps Slider
             if MISC_SLIDER < len(slider_values):
                 misc_vol = scale_value(slider_values[MISC_SLIDER])
                 last_misc = last_volumes.get("misc", -1)
@@ -125,7 +129,7 @@ def main():
                     last_volumes["misc"] = misc_vol
                     set_misc_volume(misc_vol)
 
-            # 2. App-Specific Sliders
+            # App-Specific Sliders
             for slider_idx, app_list in ORDERED_MAP.items():
                 if slider_idx >= len(slider_values):
                     continue
@@ -138,7 +142,15 @@ def main():
         except KeyboardInterrupt:
             print("\nExiting deej daemon.")
             break
+        except serial.SerialException:
+            # Explicitly catch USB disconnects/sleep events
+            print("Serial connection lost. Attempting to reconnect...")
+            if ser:
+                ser.close()
+            ser = None
+            time.sleep(1)
         except Exception:
+            # Generic fallback for unhandled pactl/subprocess errors
             time.sleep(0.02)
             continue
 
