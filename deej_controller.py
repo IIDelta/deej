@@ -18,6 +18,7 @@ ORDERED_MAP = {
     ],
 }
 MISC_SLIDER = 1
+MAIN_SLIDER = 0
 
 # Flatten all mapped targets into a single lookup set for the MISC check
 ALL_MAPPED_TARGETS = {
@@ -25,6 +26,23 @@ ALL_MAPPED_TARGETS = {
     for app_list in ORDERED_MAP.values()
     for target in app_list
 }
+
+
+def set_system_volume(volume_percent):
+    """Sets the master volume for the default audio output (sink)."""
+    try:
+        subprocess.run(
+            [
+                "pactl",
+                "set-sink-volume",
+                "@DEFAULT_SINK@",
+                f"{volume_percent}%",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        pass
 
 
 def scale_value(val):
@@ -120,6 +138,17 @@ def main():
             slider_values = [int(p) for p in parts if p.isdigit()]
             if len(slider_values) < 5:
                 continue
+
+            # Main Volume Slider
+            # Main System Volume Slider
+            if MAIN_SLIDER < len(slider_values):
+                main_vol = scale_value(slider_values[MAIN_SLIDER])
+                last_main = last_volumes.get("main", -1)
+
+                # Update if the slider moved by at least 2%
+                if abs(main_vol - last_main) >= 2:
+                    last_volumes["main"] = main_vol
+                    set_system_volume(main_vol)
 
             # Unmapped (Misc) Apps Slider
             if MISC_SLIDER < len(slider_values):
